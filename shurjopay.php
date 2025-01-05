@@ -386,6 +386,79 @@ class shurjopay extends NonmerchantGateway {
 
         return $this->view->fetch();
     }
+	
+	/**
+	 * Builds the notification URL with the given order ID.
+	 *
+	 * @param string|null $order_id The order ID to include in the URL.
+	 * @return string The constructed notification URL.
+	 */
+	private function buildNotificationURL(?string $order_id = null): string
+	{
+		// Fetch the base callback URL and company ID from configuration
+		$base_url = Configure::get('Blesta.gw_callback_url');
+		$company_id = Configure::get('Blesta.company_id');
+
+		// Validate base URL and company ID
+		if (empty($base_url) || empty($company_id)) {
+			throw new Exception("Invalid configuration: Base URL or Company ID is missing.");
+		}
+
+		// Sanitize and normalize the base URL
+		$base_url = rtrim($base_url, '/');
+
+		// Construct the URL path for shurjopay
+		$path = sprintf('%s/shurjopay/', $company_id);
+
+		// Encode the order ID if provided
+		$query_param = $order_id ? http_build_query(['order_id' => $order_id]) : 'order_id=null';
+
+		// Build the complete URL
+		$notification_url = sprintf('%s/%s?%s', $base_url, $path, $query_param);
+
+		// Validate the final URL
+		if (!filter_var($notification_url, FILTER_VALIDATE_URL)) {
+			throw new Exception("Failed to construct a valid notification URL.");
+		}
+
+		return $notification_url;
+	}
+
+
+    /**
+	 * Sends a callback notification to the specified URL using cURL.
+	 *
+	 * @param string $url The URL to send the notification to.
+	 */
+	private function callBackNotification(string $url): void
+	{
+		// Initialize cURL session
+		$ch = curl_init();
+
+		// Set cURL options
+		curl_setopt_array($ch, [
+			CURLOPT_URL => $url,
+			CURLOPT_CUSTOMREQUEST => 'GET',
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:103.0) Gecko/20100101 Firefox/103.0',
+		]);
+
+		// Execute cURL request
+		$response = curl_exec($ch);
+
+		// Check for cURL errors
+		if ($response === false) {
+			$error = curl_error($ch);
+			curl_close($ch);
+			// Log or handle the error as needed
+			//echo json_encode(['error' => $error]);
+			//return;
+		}
+
+		// Close cURL session
+		curl_close($ch);
+
+	}
 	/**
 	 * Validates the incoming POST/GET response from the gateway to ensure it is
 	 * legitimate and can be trusted.
@@ -440,7 +513,7 @@ class shurjopay extends NonmerchantGateway {
 		}
 		curl_close($ch);   
 		$data = json_decode($response, true);
-		print_r($data);
+		//print_r($data);
 		if ($data[0]['sp_code']){
 			if($data[0]['sp_code']=='1000'){
 				$invoices = $data[0]['value1'];
@@ -449,10 +522,25 @@ class shurjopay extends NonmerchantGateway {
 					'amount' =>$data,
 					'currency' =>$data[0]['currency'],
 					'status' => "approved",
-					'reference_id' => null,
-					'transaction_id' =>$data[0]['bank_trx_id'],
+					'reference_id' => $data[0]['bank_trx_id'],
+					'transaction_id' =>$data[0]['order_id'],
 					'invoices' => $this->unserializeInvoices($invoices),
 				];
+			}
+			elseif($data[0]['sp_code']=='1002'){
+				$this->Input->setErrors([
+					'payment' => ['canceled' => Language::_('shurjopay.!error.payment.canceled', true)]
+				]);
+			}
+			elseif($data[0]['sp_code']=='1068'){
+				$this->Input->setErrors([
+					'payment' => ['canceled' => Language::_('shurjopay.!error.payment.canceled', true)]
+				]);
+			}
+			else{
+				$this->Input->setErrors([
+					'payment' => ['failed' => Language::_('shurjopay.!error.payment.failed', true)]
+				]);
 			}
 			
 	}
@@ -514,14 +602,16 @@ class shurjopay extends NonmerchantGateway {
 		$data = json_decode($response, true);
 		if ($data[0]['sp_code']){
 			if($data[0]['sp_code']=='1000'){
+				$notification_url = $this->buildNotificationURL($order_id);
+			    $this->callBackNotification($notification_url);
 				$invoices = $data[0]['value1'];
 				return [
 					'client_id' =>$data[0]['value2'],
 					'amount' =>$data[0]['amount'],
 					'currency' =>$data[0]['currency'],
 					'status' => "approved",
-					'reference_id' => $data[0]['order_id'],
-					'transaction_id' =>$data[0]['bank_trx_id'],
+					'reference_id' => $data[0]['bank_trx_id'],
+					'transaction_id' =>$data[0]['order_id'],
 					'invoices' => null,
 				];
 			}
