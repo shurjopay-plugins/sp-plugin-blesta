@@ -612,7 +612,7 @@ class shurjopay extends NonmerchantGateway {
 					'status' => "approved",
 					'reference_id' => $data[0]['bank_trx_id'],
 					'transaction_id' =>$data[0]['order_id'],
-					'invoices' => null,
+					'invoices' => $this->unserializeInvoices($invoices),
 				];
 			}
 			elseif($data[0]['sp_code']=='1002'){
