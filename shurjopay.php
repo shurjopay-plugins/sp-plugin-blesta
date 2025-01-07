@@ -484,7 +484,7 @@ class shurjopay extends NonmerchantGateway {
             $this->url = 'https://www.sandbox.shurjopayment.com/';
         }
 
-		$order_id = (isset($post['order_id']) ? $post['order_id'] : null);
+		$order_id = (isset($get['order_id']) ? $get['order_id'] : null);
 	
 
 		$token=json_decode($this->gettoken($this->meta['store_id'],$this->meta['store_password'],$this->url),true);
@@ -519,7 +519,7 @@ class shurjopay extends NonmerchantGateway {
 				$invoices = $data[0]['value1'];
 				return [
 					'client_id' =>$data[0]['value2'],
-					'amount' =>$data,
+					'amount' =>$data[0]['amount'],
 					'currency' =>$data[0]['currency'],
 					'status' => "approved",
 					'reference_id' => $data[0]['bank_trx_id'],
